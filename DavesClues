@@ -1,0 +1,146 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © thesuperdave
+// credit to © MichelT for VWAP
+//
+//
+//                       ---=-----
+//                 ---------------------
+//              ==-------------------------
+//            ==-----------------------------
+//          ===-------====----------===--------
+//        +==------==    *==-----=   *++==-------
+//       ===------        ==-----       *+==------
+//      ==-------        *=------         +==------
+//     *==-------      -=----------       +==------=
+//    ++=--------------------------------==---------=
+//    ===--------------------------------------------
+//    ===--------------------------------------------
+//   *+=---------------------------------------------
+//   *+=---------------------------------------------
+//   *+=-------=-------------------------------------
+//   *+=------====-------------------------==--------
+//   *+=-------=+++=--------------------=-+*=--------
+//   *+=-------- *+--------=-------------= *=--------
+//   *+=-------- *+=------=+*++*==-------- *=======--
+//   *+=-------- *+--------    *=---------  +++==++
+//   *+=-------- *+---------   *=--------- +=--------
+//   *+=-------- *+========    *==-------- *=--------
+//   *+=--------   --===---    *==-------- *=--------
+//    +========  ++--------    *=========  *=--------
+//       ===     *+=-------=       ===     *+========
+//   *=--------- *+=-------=    =--------       +
+//   *+=-------- *+=-------=   *=---------
+//   *+=-------- *+=-------=   *==--------
+//    +++======  *+=-------=   *=---------
+//               *+=-------=   *=========
+//               *+=-------=     ======
+//               *+---------        =
+//               *+========
+//                 +++====
+
+//@version=5
+indicator(title="Dave's Clues", shorttitle="Daves's Clues", overlay=true)
+
+// SETTINGS -----------------------------
+// text, info etc...
+display_set          = display.all - display.price_scale - display.status_line
+ema_text            = "----------------- EMA ------------------"
+dwmLevels           = "------------- D/W/M Levels -------------"
+groupEma            = "------------- 20/50/200 EMA ------------"
+groupDwmLevels      = "------------- D/W/M Levels -------------"
+
+// colors
+ema1color                       = color.rgb(6, 224, 61, 70)
+ema2color                       = color.new(color.aqua, 70)
+ema3color                       = color.new(color.blue, 70)
+ema4color                       = color.new(color.purple, 50)
+dLevelColor                     = color.rgb(16, 105, 207, 50)
+wLevelColor                     = color.rgb(218, 221, 8, 50)
+mLevelColor                     = color.rgb(255, 153, 0, 50)
+
+// GLOBALS /  CALCS ----------------------------
+
+current_tf          = timeframe.period
+displayLtf          = timeframe.isintraday and timeframe.multiplier <= 5
+displayMtf          = timeframe.isintraday and (timeframe.multiplier >= 6 and timeframe.multiplier <= 60)
+displayHtf          = timeframe.isdwm
+displayVwapD        = current_tf == "D"
+displayVwapLtf      = displayLtf
+isFutures           = syminfo.type == 'futures'
+isForex             = syminfo.type == 'forex'
+
+src     = close
+
+MILLIS_IN_DAY   = 86400000
+dwmBarTime      = timeframe.isdwm ? time : time("D")
+
+dBlank              = "\n‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏"
+wBlank              = "\n‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏"
+mBlank              = "‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏"
+
+[_dH, _dL, _dC]                         = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]],  barmerge.gaps_off, barmerge.lookahead_on)
+[_wH, _wL, _wC]                         = request.security(syminfo.tickerid, "W", [high[1], low[1], close[1]],  barmerge.gaps_off, barmerge.lookahead_on)
+[_mH, _mL, _mC]                         = request.security(syminfo.tickerid, "M", [high[1], low[1], close[1]],  barmerge.gaps_off, barmerge.lookahead_on)
+
+
+// INPUTS --------------------------------
+ema1l       = input.int(9, title="Ema 1 Length", inline = "emal", group = groupEma)
+ema2l       = input.int(20, title="Ema 2 Length", inline = "emal", group = groupEma)
+ema3l       = input.int(40, title="Ema 3 Length", inline = "emal", group = groupEma)
+ema4l       = input.int(200, title="Ema 4 Length", inline = "emal", group = groupEma)
+
+showEma1    = input.bool(false, title="Show EMA?", inline = ema_text, group = groupEma)
+showEma2    = input.bool(false, title="Show EMA?", inline = ema_text, group = groupEma)
+showEma3    = input.bool(false, title="Show EMA?", inline = ema_text, group = groupEma)
+showEma4    = input.bool(false, title="Show EMA?", inline = ema_text, group = groupEma)
+
+scalpColor  = input(defval = ema1color, title="9 EMA", inline = "ema2", group = groupEma)
+ltfColor    = input(defval = ema2color, title="20 EMA", inline = "ema2", group = groupEma)
+mtfColor    = input(defval = ema3color, title="50 EMA", inline = "ema2", group = groupEma)
+htfColor    = input(defval = ema4color, title="200 EMA", inline = "ema2", group = groupEma)
+
+d_Line_Color        = input.color(defval = dLevelColor, title = "Daily Level", inline = dwmLevels, group = groupDwmLevels)
+w_Line_Color        = input.color(defval = wLevelColor, title = "Weekly Level",  inline = dwmLevels, group = groupDwmLevels)
+m_Line_Color        = input.color(defval = mLevelColor, title = "Monthly Level", inline = dwmLevels, group = groupDwmLevels)
+extendLines         = input.bool(defval = false, title = "Extend Levels Across Screen?", inline = dwmLevels, group = groupDwmLevels)
+dwmLineWidth        = input.int(defval = 2, title = "Levels Line Width", minval = 1, maxval = 4, step = 1, group = groupDwmLevels)
+
+ema1    = ta.ema(src, ema1l)
+ema2   = ta.ema(src, ema2l)
+ema3   = ta.ema(src, ema3l)
+ema4  = ta.ema(src, ema4l)
+
+// EMAs -----------------------------
+plot(showEma1 ? ema1 : na, title="EMA-1", color = scalpColor, offset = 0, linewidth = 2, display = display_set)
+plot(showEma2 ? ema2 : na, title="EMA-2", color = ltfColor, offset = 0, linewidth = 2, display = display_set)
+plot(showEma3 ? ema3 : na, title="EMA-3", color = mtfColor, offset = 0, linewidth = 3, display = display_set)
+plot(showEma4 ? ema4 : na, title="EMA-4", color = htfColor, offset = 0, linewidth = 4, display = display_set)
+
+// DWM / Globex PRICE LEVELS --------------------------
+
+daily_High_Line     = not timeframe.isdwm ? line.new(time, _dH, time + 1, _dH, xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = d_Line_Color, style = line.style_solid, width = dwmLineWidth) : na
+daily_Low_Line      = not timeframe.isdwm ? line.new(time, _dL, time + 1, _dL, xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = d_Line_Color, style = line.style_solid, width = dwmLineWidth) : na
+line.delete(daily_High_Line[1])
+line.delete(daily_Low_Line[1])
+label_daily_High    = not timeframe.isdwm ? label.new(bar_index, _dH, text = dBlank + "Prev D High : " + str.tostring(_dH, format.mintick), color = color.new(color.black, 100), style = label.style_label_left, textcolor = d_Line_Color, size = size.small, textalign = text.align_center) : na
+label_daily_Low     = not timeframe.isdwm ? label.new(bar_index, _dL, text = dBlank + "Prev D Low : "  +  str.tostring(_dL, format.mintick), color = color.new(color.black, 100), style = label.style_label_left, textcolor = d_Line_Color, size = size.small, textalign = text.align_center) : na
+label.delete(label_daily_High[1])
+label.delete(label_daily_Low[1])
+
+weekly_High_Line    = not timeframe.isdwm ? line.new(time, _wH, time + 1, _wH, xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = w_Line_Color, style = line.style_solid, width = dwmLineWidth) : na
+weekly_Low_Line     = not timeframe.isdwm ? line.new(time, _wL, time + 1, _wL, xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = w_Line_Color, style = line.style_solid, width = dwmLineWidth) : na
+line.delete(weekly_High_Line[1])
+line.delete(weekly_Low_Line[1])
+label_weekly_High   = not timeframe.isdwm ? label.new(bar_index, _wH, text = wBlank + "Prev W High : " + str.tostring(_wH, format.mintick), color = color.new(color.black, 100), style = label.style_label_left, textcolor = w_Line_Color, size = size.small, textalign = text.align_center) : na
+label_weekly_Low    = not timeframe.isdwm ? label.new(bar_index, _wL, text = wBlank + "Prev W Low : "  + str.tostring(_wL, format.mintick), color = color.new(color.black, 100), style = label.style_label_left, textcolor = w_Line_Color, size = size.small, textalign = text.align_center) : na
+label.delete(label_weekly_High[1])
+label.delete(label_weekly_Low[1])
+
+monthly_High_Line   = not timeframe.isdwm ? line.new(time, _mH,  time + 1, _mH,  xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = m_Line_Color, style = line.style_solid, width = dwmLineWidth) : na
+monthly_Low_Line    = not timeframe.isdwm ? line.new(time, _mL,   time + 1, _mL,   xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = m_Line_Color, style = line.style_solid, width = dwmLineWidth) : na
+line.delete(monthly_High_Line[1])
+line.delete(monthly_Low_Line[1])
+label_monthly_High  = not timeframe.isdwm ? label.new(bar_index, _mH, text = mBlank + "Prev M High : " + str.tostring(_mH, format.mintick) + "\n", color = color.new(color.black, 100), style = label.style_label_left, textcolor = m_Line_Color, size = size.small, textalign = text.align_center) : na
+label_monthly_Low   = not timeframe.isdwm ?  label.new(bar_index, _mL, text = mBlank + "Prev M Low : "  + str.tostring(_mL, format.mintick) + "\n", color = color.new(color.black, 100), style = label.style_label_left, textcolor = m_Line_Color, size = size.small, textalign = text.align_center) : na
+label.delete(label_monthly_High[1])
+label.delete(label_monthly_Low[1])
